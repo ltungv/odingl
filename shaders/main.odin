@@ -1,8 +1,6 @@
 package main
 
 import "core:fmt"
-import "core:time"
-import "core:math"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
 import "../commons/"
@@ -59,8 +57,8 @@ main :: proc() {
 
   // Compile and link the shader program.
   shader_program, is_program_ok := commons.gl_load_source(
-    string(#load("hello_window.vert.glsl")),
-    string(#load("hello_window.frag.glsl")));
+    string(#load("shaders.vert.glsl")),
+    string(#load("shaders.frag.glsl")));
   if !is_program_ok do return
 
   // A vertex array object (VAO) can be bound and any subsequent vertex attribute calls will be
@@ -136,21 +134,12 @@ main :: proc() {
   // Unbind VBO.
   gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 
-  // Timer for background color osscilation.
-  watch: time.Stopwatch
-  time.stopwatch_start(&watch)
-
   for !glfw.WindowShouldClose(window) {
     // Check for user's inputs
     glfw.PollEvents()
 
-    // Create oscillating value (osl).
-    raw_duration := time.stopwatch_duration(watch)
-    secs := f32(time.duration_seconds(raw_duration))
-    osl := (math.sin(3 * secs) + 1) * 0.5
-
     // Clear screen with color. Pink: 0.9, 0.2, 0.8.
-    gl.ClearColor(0.9 * osl, 0.2, 0.8, 1) 
+    gl.ClearColor(0.2, 0.3, 0.3, 1.0) 
     gl.Clear(gl.COLOR_BUFFER_BIT)
 
     // Bind data.
