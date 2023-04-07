@@ -42,7 +42,7 @@ gl_check_error :: proc(object_id: u32, status_param_id: u32, get_param: GlGetPar
   defer delete(info_log)
   // Copy the error message into our buffer.
   get_info_log(object_id, info_log_length, nil, &info_log[0])
-  fmt.printf("ERROR: %s\n", info_log)
+  fmt.printf("%s\n", info_log)
   return false
 }
 
