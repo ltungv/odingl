@@ -31,7 +31,6 @@ main :: proc() {
   defer glfw.Terminate()
 
   commons.glfw_window_hints()
-
   window := glfw.CreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE, nil, nil)
   if window == nil {
     fmt.println("Failed to create window.")
@@ -43,7 +42,6 @@ main :: proc() {
   glfw.SwapInterval(1)
   glfw.SetKeyCallback(window, cb_key)
   glfw.SetFramebufferSizeCallback(window, cb_frame_buffer_size)
-
   commons.gl_load()
 
   shader_program, is_program_ok := commons.gl_load_source(
@@ -52,11 +50,6 @@ main :: proc() {
   if !is_program_ok do return
 
   vao, vbo: u32
-  gl.GenVertexArrays(1, &vao)
-  gl.GenBuffers(1, &vbo)
-
-  gl.BindVertexArray(vao)
-
   vertices := [18]f32 {
     // 1st vertex
     0.5, -0.5, 0.0,
@@ -71,6 +64,11 @@ main :: proc() {
     // 3rd vertex's color
     0.0, 0.0, 1.0,
   };
+
+  gl.GenVertexArrays(1, &vao)
+  gl.BindVertexArray(vao)
+
+  gl.GenBuffers(1, &vbo)
   gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
   gl.BufferData(
     gl.ARRAY_BUFFER,
@@ -94,12 +92,6 @@ main :: proc() {
     // Check for user's inputs
     glfw.PollEvents()
 
-    // Changing green color according to the sin function.
-    time_value := glfw.GetTime()
-    green_intensity := f32((math.sin(time_value) / 2.0) + 0.5)
-    // Find the location of the uniform using its name.
-    vertex_color_location := gl.GetUniformLocation(shader_program, "ourColor")
-
     // Clear screen with color. Pink: 0.9, 0.2, 0.8.
     gl.ClearColor(0.2, 0.3, 0.3, 1.0) 
     gl.Clear(gl.COLOR_BUFFER_BIT)
@@ -110,15 +102,13 @@ main :: proc() {
 
     // Draw triangles.
     gl.UseProgram(shader_program)
-    // Set the uniform value. This must be done after calling `gl.UseProgram`.
-    gl.Uniform4f(vertex_color_location, 0.0, green_intensity, 0.0, 1.0)
     gl.DrawArrays(gl.TRIANGLES, 0, 3)
 
     // Unbind data.
     gl.BindVertexArray(0)
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 
-    // OpenGL has 2 buffer whether only 1 is active at any given time. When rendering,
+    // OpenGL has 2 buffer where only 1 is active at any given time. When rendering,
     // we first modify the back buffer then swap it with the front buffer, where the
     // front buffer is the active one.
     glfw.SwapBuffers(window)

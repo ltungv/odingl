@@ -165,7 +165,7 @@ main :: proc() {
     gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0)
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 
-    // OpenGL has 2 buffer whether only 1 is active at any given time. When rendering,
+    // OpenGL has 2 buffer where only 1 is active at any given time. When rendering,
     // we first modify the back buffer then swap it with the front buffer, where the
     // front buffer is the active one.
     glfw.SwapBuffers(window)
