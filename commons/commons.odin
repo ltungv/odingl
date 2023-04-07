@@ -23,9 +23,31 @@ glfw_window_hints :: proc() {
   when ODIN_OS == .Darwin do glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, 1)
 }
 
+glfw_window_create :: proc(width, height: i32, title: cstring) -> (glfw.WindowHandle, bool) {
+  // Choose opengl version.
+  glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
+  glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
+  // Only use opengl core functionalities.
+  glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+  // Enable forwrd compatibility (only required on MacOS).
+  when ODIN_OS == .Darwin do glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, 1)
+
+  window := glfw.CreateWindow(width, height, title, nil, nil)
+  if window == nil {
+    fmt.println("Failed to create window.")
+    return nil, false
+  }
+  return window, true
+}
+
 gl_load :: proc() {
   gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, glfw.gl_set_proc_address)
   fmt.printf("OpenGL version: %s\n", gl.GetString(gl.VERSION));
+}
+
+gl_load_buffer_object_data :: proc(object_id, target, usage: u32, data: ^[$N]$T) {
+  gl.BindBuffer(target, object_id)
+  gl.BufferData(target, size_of(data^), data, usage)
 }
 
 // Check for OpenGL error where the error status and message are retrieved by the given procedures.
@@ -42,7 +64,13 @@ gl_check_error :: proc(object_id: u32, status_param_id: u32, get_param: GlGetPar
   defer delete(info_log)
   // Copy the error message into our buffer.
   get_info_log(object_id, info_log_length, nil, &info_log[0])
+
+  switch status_param_id {
+    case gl.COMPILE_STATUS: fmt.println("ERROR::SHADER::VERTEX::COMPILATION_FAILED")
+    case gl.LINK_STATUS: fmt.println("ERROR::SHADER::VERTEX::LINK_FAILED")
+  }
   fmt.printf("%s\n", info_log)
+
   return false
 }
 
