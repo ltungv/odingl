@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:image/png"
+import "core:math"
 import "core:math/linalg"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
@@ -92,12 +93,6 @@ main :: proc() {
     // Check for user's inputs
     glfw.PollEvents()
 
-    // Define the transformation matrix
-    transform := linalg.MATRIX4F32_IDENTITY
-    transform = transform * linalg.matrix4_translate(linalg.Vector3f32{0.5, -0.5, 0.0})
-    transform = transform * linalg.matrix4_scale(linalg.Vector3f32{0.5, 0.5, 0.5})
-    transform = transform * linalg.matrix4_rotate(f32(glfw.GetTime()), linalg.Vector3f32{0.0, 0.0, 1.0})
-
     // Container texture
     gl.ActiveTexture(gl.TEXTURE0)
     gl.BindTexture(gl.TEXTURE_2D, textures[0])
@@ -109,15 +104,27 @@ main :: proc() {
     gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
     gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
 
-    // Set shaders
+    // Render
+    gl.ClearColor(0.2, 0.3, 0.3, 1.0) 
+    gl.Clear(gl.COLOR_BUFFER_BIT)
+
     gl.UseProgram(shader_program)
     gl.Uniform1i(gl.GetUniformLocation(shader_program, "texture1"), 0);
     gl.Uniform1i(gl.GetUniformLocation(shader_program, "texture2"), 1);
-    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform[0][0]);
 
-    // Draw
-    gl.ClearColor(0.2, 0.3, 0.3, 1.0) 
-    gl.Clear(gl.COLOR_BUFFER_BIT)
+    // Draw the texture with the first transformation applied.
+    transform_01 := linalg.MATRIX4F32_IDENTITY
+    transform_01 = transform_01 * linalg.matrix4_translate(linalg.Vector3f32{0.5, -0.5, 0.0})
+    transform_01 = transform_01 * linalg.matrix4_scale(math.sin(f32(glfw.GetTime())) * linalg.Vector3f32{1.0, 1.0, 1.0})
+    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform_01[0][0]);
+    gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
+
+    // Draw the texture with the second transformation applied.
+    transform_02 := linalg.MATRIX4F32_IDENTITY
+    transform_02 = transform_02 * linalg.matrix4_translate(linalg.Vector3f32{-0.5, 0.5, 0.0})
+    transform_02 = transform_02 * linalg.matrix4_scale(linalg.Vector3f32{0.5, 0.5, 0.5})
+    transform_02 = transform_02 * linalg.matrix4_rotate(f32(glfw.GetTime()), linalg.Vector3f32{0.0, 0.0, 1.0})
+    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform_02[0][0]);
     gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
 
     // OpenGL has 2 buffer where only 1 is active at any given time. When rendering,
