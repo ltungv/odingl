@@ -30,7 +30,7 @@ cb_key :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32)
 main :: proc() {
   // Initialize GLFW.
   if glfw.Init() != 1 {
-    fmt.println("Failed to initialize GLFW.") 
+    fmt.println("Failed to initialize GLFW.")
     return
   }
   defer glfw.Terminate()
@@ -150,7 +150,7 @@ main :: proc() {
     osl := (math.sin(3 * secs) + 1) * 0.5
 
     // Clear screen with color. Pink: 0.9, 0.2, 0.8.
-    gl.ClearColor(0.9 * osl, 0.2, 0.8, 1) 
+    gl.ClearColor(0.9 * osl, 0.2, 0.8, 1)
     gl.Clear(gl.COLOR_BUFFER_BIT)
 
     // Bind data.

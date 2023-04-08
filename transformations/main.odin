@@ -1,23 +1,135 @@
 package main
 
 import "core:fmt"
-import "core:math"
 import "core:image/png"
+import "core:math/linalg"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
-import "../commons/"
+import "../commons"
 
-SCREEN_TITLE :: "GLFW"
-SCREEN_WIDTH :: 512
-SCREEN_HEIGHT :: 512
+main :: proc() {
+  is_ok: bool
+  if glfw.Init() != 1 {
+    fmt.println("Could not initialize OpenGL.")
+    return
+  }
+  defer glfw.Terminate()
 
-gl_reset_viewport :: proc "c" (window: glfw.WindowHandle) {
-  w, h := glfw.GetFramebufferSize(window)
-  gl.Viewport(0, 0, w, h)
+  window: glfw.WindowHandle
+  window, is_ok = commons.glfw_window_create(512, 512, "transformations")
+  if !is_ok do return
+  defer glfw.DestroyWindow(window)
+
+  glfw.MakeContextCurrent(window)
+  glfw.SwapInterval(1)
+  glfw.SetKeyCallback(window, cb_key)
+  glfw.SetFramebufferSizeCallback(window, cb_frame_buffer_size)
+  commons.gl_load()
+
+  textures: [2]u32
+  gl.GenTextures(2, raw_data(&textures))
+  load_texture_mipmap_from_file(textures[0], "textures/container.png")
+  load_texture_mipmap_from_file(textures[1], "textures/awesomeface.png")
+
+  shader_program: u32
+  shader_program, is_ok = commons.gl_load_source(
+    string(#load("transformations.vert.glsl")),
+    string(#load("transformations.frag.glsl")));
+  if !is_ok do return
+
+  vertices := [32]f32{
+    // 1st vertex positions, colors, and texture coordinates
+    0.5, 0.5, 0.0,
+    1.0, 0.0, 0.0,
+    1.0, 1.0,
+    // 2nd vertex positions, colors, and texture coordinates
+    0.5, -0.5, 0.0,
+    0.0, 1.0, 0.0,
+    1.0, 0.0,
+    // 3rd vertex positions, colors, and texture coordinates
+    -0.5, -0.5, 0.0,
+    0.0, 0.0, 1.0,
+    0.0, 0.0,
+    // 4th vertex positions, colors, and texture coordinates
+    -0.5, 0.5, 0.0,
+    1.0, 1.0, 0.0,
+    0.0, 1.0
+  }
+  indices := [6]u32{
+    // 1st triangle
+    0, 1, 3,
+    // 2nd triangle
+    1, 2, 3,
+  }
+
+  vao, vbo, ebo: u32
+  gl.GenVertexArrays(1, &vao)
+  defer gl.DeleteVertexArrays(1, &vao)
+  gl.GenBuffers(1, &vbo)
+  defer gl.DeleteBuffers(1, &vbo)
+  gl.GenBuffers(1, &ebo)
+  defer gl.DeleteBuffers(1, &ebo)
+
+  gl.BindVertexArray(vao)
+  // Load the vertices data
+  gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+  gl.BufferData(gl.ARRAY_BUFFER, size_of(vertices), &vertices, gl.STATIC_DRAW)
+  // Load the vertex element indices
+  gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
+  gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, size_of(indices), &indices, gl.STATIC_DRAW)
+
+  // position attribute
+  gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 0);
+  gl.EnableVertexAttribArray(0);
+  // color attribute
+  gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 3 * size_of(f32));
+  gl.EnableVertexAttribArray(1);
+  // texture coordinate attribute
+  gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 6 * size_of(f32));
+  gl.EnableVertexAttribArray(2);
+
+  for !glfw.WindowShouldClose(window) {
+    // Check for user's inputs
+    glfw.PollEvents()
+
+    // Define the transformation matrix
+    transform := linalg.MATRIX4F32_IDENTITY
+    transform = transform * linalg.matrix4_translate(linalg.Vector3f32{0.5, -0.5, 0.0})
+    transform = transform * linalg.matrix4_scale(linalg.Vector3f32{0.5, 0.5, 0.5})
+    transform = transform * linalg.matrix4_rotate(f32(glfw.GetTime()), linalg.Vector3f32{0.0, 0.0, 1.0})
+
+    // Container texture
+    gl.ActiveTexture(gl.TEXTURE0)
+    gl.BindTexture(gl.TEXTURE_2D, textures[0])
+    // Face texture
+    gl.ActiveTexture(gl.TEXTURE1)
+    gl.BindTexture(gl.TEXTURE_2D, textures[1])
+    // Bind opengl objects
+    gl.BindVertexArray(vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
+
+    // Set shaders
+    gl.UseProgram(shader_program)
+    gl.Uniform1i(gl.GetUniformLocation(shader_program, "texture1"), 0);
+    gl.Uniform1i(gl.GetUniformLocation(shader_program, "texture2"), 1);
+    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform[0][0]);
+
+    // Draw
+    gl.ClearColor(0.2, 0.3, 0.3, 1.0) 
+    gl.Clear(gl.COLOR_BUFFER_BIT)
+    gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
+
+    // OpenGL has 2 buffer where only 1 is active at any given time. When rendering,
+    // we first modify the back buffer then swap it with the front buffer, where the
+    // front buffer is the active one.
+    glfw.SwapBuffers(window)
+  }
 }
 
 cb_frame_buffer_size :: proc "c" (window: glfw.WindowHandle, width, height: i32) {
-  gl_reset_viewport(window)
+  w, h := glfw.GetFramebufferSize(window)
+  gl.Viewport(0, 0, w, h)
 }
 
 cb_key :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32) {
@@ -53,110 +165,3 @@ load_texture_mipmap_from_file :: proc(texture_id: u32, path: string) {
     raw_data(container_texture.pixels.buf))
   gl.GenerateMipmap(gl.TEXTURE_2D)
 }
-
-main :: proc() {
-  if glfw.Init() != 1 {
-    fmt.println("Failed to initialize GLFW.") 
-    return
-  }
-  defer glfw.Terminate()
-
-  window, window_created := commons.glfw_window_create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
-  if !window_created do return
-  defer glfw.DestroyWindow(window)
-
-  glfw.MakeContextCurrent(window)
-  glfw.SwapInterval(1)
-  glfw.SetKeyCallback(window, cb_key)
-  glfw.SetFramebufferSizeCallback(window, cb_frame_buffer_size)
-  commons.gl_load()
-
-  shader_program, program_compiled := commons.gl_load_source(
-    string(#load("textures.vert.glsl")),
-    string(#load("textures.frag.glsl")));
-  if !program_compiled do return
-
-  textures: [2]u32
-  gl.GenTextures(2, raw_data(&textures))
-  load_texture_mipmap_from_file(textures[0], "textures/container.png")
-  load_texture_mipmap_from_file(textures[1], "textures/awesomeface.png")
-
-  vertices := [32]f32 {
-    // 1st vertex positions, colors, and texture coordinates
-    0.5, 0.5, 0.0,
-    1.0, 0.0, 0.0,
-    1.0, 1.0,
-    // 2nd vertex positions, colors, and texture coordinates
-    0.5, -0.5, 0.0,
-    0.0, 1.0, 0.0,
-    1.0, 0.0,
-    // 3rd vertex positions, colors, and texture coordinates
-    -0.5, -0.5, 0.0,
-    0.0, 0.0, 1.0,
-    0.0, 0.0,
-    // 4th vertex positions, colors, and texture coordinates
-    -0.5, 0.5, 0.0,
-    1.0, 1.0, 0.0,
-    0.0, 1.0
-  }
-  indices := [6]u32 {
-    // 1st triangle
-    0, 1, 3,
-    // 2nd triangle
-    1, 2, 3,
-  }
-
-  vao: u32
-  gl.GenVertexArrays(1, &vao)
-  gl.BindVertexArray(vao)
-
-  vbo: u32
-  gl.GenBuffers(1, &vbo)
-  commons.gl_load_buffer_object_data(vbo, gl.ARRAY_BUFFER, gl.STATIC_DRAW, &vertices)
-
-  ebo: u32
-  gl.GenBuffers(1, &ebo)
-  commons.gl_load_buffer_object_data(ebo, gl.ELEMENT_ARRAY_BUFFER, gl.STATIC_DRAW, &indices)
-
-  // position attribute
-  gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 0);
-  gl.EnableVertexAttribArray(0);
-  // color attribute
-  gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 3 * size_of(f32));
-  gl.EnableVertexAttribArray(1);
-  // texture coordinate attribute
-  gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 6 * size_of(f32));
-  gl.EnableVertexAttribArray(2);
-
-  for !glfw.WindowShouldClose(window) {
-    // Check for user's inputs
-    glfw.PollEvents()
-
-    // Container texture
-    gl.ActiveTexture(gl.TEXTURE0)
-    gl.BindTexture(gl.TEXTURE_2D, textures[0])
-    // Face texture
-    gl.ActiveTexture(gl.TEXTURE1)
-    gl.BindTexture(gl.TEXTURE_2D, textures[1])
-    // Bind opengl objects
-    gl.BindVertexArray(vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
-
-    // Set shaders
-    gl.UseProgram(shader_program)
-    gl.Uniform1i(gl.GetUniformLocation(shader_program, "texture1"), 0);
-    gl.Uniform1i(gl.GetUniformLocation(shader_program, "texture2"), 1);
-
-    // Draw
-    gl.ClearColor(0.2, 0.3, 0.3, 1.0) 
-    gl.Clear(gl.COLOR_BUFFER_BIT)
-    gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
-
-    // OpenGL has 2 buffer where only 1 is active at any given time. When rendering,
-    // we first modify the back buffer then swap it with the front buffer, where the
-    // front buffer is the active one.
-    glfw.SwapBuffers(window)
-  }
-}
-
