@@ -122,9 +122,15 @@ main :: proc() {
     // Draw the texture with the second transformation applied.
     transform_02 := linalg.MATRIX4F32_IDENTITY
     transform_02 = transform_02 * linalg.matrix4_translate(linalg.Vector3f32{-0.5, 0.5, 0.0})
-    transform_02 = transform_02 * linalg.matrix4_scale(linalg.Vector3f32{0.5, 0.5, 0.5})
     transform_02 = transform_02 * linalg.matrix4_rotate(f32(glfw.GetTime()), linalg.Vector3f32{0.0, 0.0, 1.0})
     gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform_02[0][0]);
+    gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
+
+    // Draw the texture with the third transformation applied.
+    transform_03 := linalg.MATRIX4F32_IDENTITY
+    transform_03 = transform_03 * linalg.matrix4_rotate(f32(glfw.GetTime()), linalg.Vector3f32{0.0, 0.0, 1.0})
+    transform_03 = transform_03 * linalg.matrix4_translate(linalg.Vector3f32{-0.5, 0.5, 0.0})
+    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform_03[0][0]);
     gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
 
     // OpenGL has 2 buffer where only 1 is active at any given time. When rendering,
