@@ -5,6 +5,7 @@ import "core:image/png"
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
+import "core:time"
 import "core:runtime"
 
 import gl "vendor:OpenGL"
@@ -12,20 +13,22 @@ import "vendor:glfw"
 
 import "../commons"
 
-delta_time := 0.0
-last_frame := 0.0
+mouse := commons.GlMouse {
+  first = true,
+  pos_last = linalg.Vector2f32{0.0, 0.0},
+  pos_curr = linalg.Vector2f32{0.0, 0.0},
+}
 
-fov := f32(45.0)
-yaw := f32(-90.0)
-pitch := f32(0.0)
-
-mouse_first := true
-mouse_last_x := f32(0.0)
-mouse_last_y := f32(0.0)
-
-camera_position := linalg.Vector3f32{0.0, 0.0, 3.0}
-camera_front := linalg.Vector3f32{0.0, 0.0, -1.0}
-camera_up := linalg.Vector3f32{0.0, 1.0, 0.0}
+camera := commons.GlCamera {
+  position = linalg.Vector3f32{0.0, 0.0, 3.0},
+  front = linalg.Vector3f32{0.0, 0.0, -1.0},
+  up = linalg.Vector3f32{0.0, 1.0, 0.0},
+  fov = f32(45.0),
+  yaw = f32(-90.0),
+  pitch = f32(0.0),
+  speed = f32(2.5),
+  sensitivity = f32(0.1),
+}
 
 main :: proc() {
   if glfw.Init() != 1 {
@@ -148,17 +151,20 @@ main :: proc() {
   gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 5 * size_of(f32), 3 * size_of(f32));
   gl.EnableVertexAttribArray(1);
 
+  delta_time := f32(0.0)
+  last_frame := 0.0
+
   for !glfw.WindowShouldClose(window) {
     // Check for user's inputs
     glfw.PollEvents()
-    process_input(window)
 
     current_frame := glfw.GetTime()
-    delta_time = current_frame - last_frame
+    delta_time = f32(current_frame - last_frame)
     last_frame = current_frame
+    view := commons.gl_camera_get_view(&camera)
+    proj := commons.gl_camera_get_proj(&camera, 4.0 / 3.0, 0.1, 100.0)
 
-    view := linalg.matrix4_look_at(camera_position, camera_position + camera_front, camera_up);
-    proj := linalg.matrix4_perspective(linalg.radians(fov), 4.0 / 3.0, 0.1, 100.0)
+    process_input(window, delta_time)
 
     // Container texture
     gl.ActiveTexture(gl.TEXTURE0)
@@ -209,43 +215,23 @@ cb_key :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32)
 
 cb_mouse :: proc "c" (window: glfw.WindowHandle, xpos, ypos: f64) {
   context = runtime.default_context()
-  if mouse_first {
-    mouse_last_x = f32(xpos)
-    mouse_last_y = f32(ypos)
-    mouse_first = false
-  }
-
-  offset_x := f32(xpos) - mouse_last_x
-  offset_y := f32(ypos) - mouse_last_y
-  mouse_last_x = f32(xpos)
-  mouse_last_y = f32(ypos)
-
-  sensitivity := f32(0.1)
-  yaw += sensitivity * offset_x
-  pitch -= sensitivity * offset_y
-
-  if pitch > 89.0 do pitch = 89.0
-  if pitch < -89.0 do pitch = -89.0
-
-  camera_front = linalg.normalize(linalg.Vector3f32{
-    math.cos(linalg.radians(yaw)) * math.cos(linalg.radians(pitch)),
-    math.sin(linalg.radians(pitch)),
-    math.sin(linalg.radians(yaw)) * math.cos(linalg.radians(pitch)),
-  })
+  commons.gl_mouse_move(&mouse, f32(xpos), f32(ypos))
+  commons.gl_camera_pane(&camera, &mouse)
 }
 
 cb_scroll :: proc "c" (window: glfw.WindowHandle, xoffset, yoffset: f64) {
-  fov -= f32(yoffset);
-  if fov < 1.0 do fov = 1.0
-  if fov > 45.0 do fov = 45.0
+  context = runtime.default_context()
+  commons.gl_camera_zoom(&camera, f32(yoffset))
 }
 
-process_input :: proc(window: glfw.WindowHandle) {
-  camera_speed := 2.5 * f32(delta_time)
-  if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS do camera_position += camera_speed * camera_front
-  if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS do camera_position -= camera_speed * camera_front
-  if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS do camera_position -= camera_speed * linalg.normalize(linalg.cross(camera_front, camera_up))
-  if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS do camera_position += camera_speed * linalg.normalize(linalg.cross(camera_front, camera_up))
+process_input :: proc(window: glfw.WindowHandle, delta_time: f32) {
+  if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS do commons.gl_camera_move_forward(&camera, delta_time)
+  if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS do commons.gl_camera_move_backward(&camera, delta_time)
+  if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS do commons.gl_camera_move_left(&camera, delta_time)
+  if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS do commons.gl_camera_move_right(&camera, delta_time)
+  if glfw.GetKey(window, glfw.KEY_SPACE) == glfw.PRESS do commons.gl_camera_move_up(&camera, delta_time)
+  if glfw.GetKey(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS do commons.gl_camera_move_down(&camera, delta_time)
+  if glfw.GetKey(window, glfw.KEY_RIGHT_SHIFT) == glfw.PRESS do commons.gl_camera_move_down(&camera, delta_time)
 }
 
 load_texture_mipmap_from_file :: proc(texture_id: u32, path: string) {
