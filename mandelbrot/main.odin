@@ -7,10 +7,12 @@ import gl "vendor:OpenGL"
 import "vendor:glfw"
 import "../commons"
 
-zoom := f32(1.0)
-xcenter := f32(0.0)
-ycenter := f32(0.0)
-transform := linalg.MATRIX4F32_IDENTITY
+Application :: struct {
+  zoom: f32,
+  xcenter: f32,
+  ycenter: f32,
+  transform: linalg.Matrix4f32,
+}
 
 main :: proc() {
   if glfw.Init() != 1 {
@@ -24,10 +26,18 @@ main :: proc() {
   if window, is_ok = commons.glfw_window_create(512, 512, "transformations"); !is_ok do return
   defer glfw.DestroyWindow(window)
 
-  glfw.MakeContextCurrent(window)
-  glfw.SwapInterval(1)
+  app := Application {
+    zoom = f32(1.0),
+    xcenter = f32(0.0),
+    ycenter = f32(0.0),
+    transform = linalg.MATRIX4F32_IDENTITY,
+  }
+
+  glfw.SetWindowUserPointer(window, &app)
   glfw.SetKeyCallback(window, cb_key)
   glfw.SetFramebufferSizeCallback(window, cb_frame_buffer_size)
+  glfw.MakeContextCurrent(window)
+  glfw.SwapInterval(1)
   commons.gl_load()
 
   shader_program: u32
@@ -57,7 +67,7 @@ main :: proc() {
   for !glfw.WindowShouldClose(window) {
     // Accepting keyboard inputs for movement and zoom.
     glfw.PollEvents()
-    handle_inputs(window)
+    handle_inputs(window, &app)
 
     // Bind opengl objects
     gl.BindVertexArray(vao)
@@ -65,11 +75,11 @@ main :: proc() {
     gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
 
     // Render
-    gl.ClearColor(0.0, 0.0, 0.0, 1.0) 
+    gl.ClearColor(0.0, 0.0, 0.0, 1.0)
     gl.Clear(gl.COLOR_BUFFER_BIT)
 
     gl.UseProgram(shader_program)
-    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &transform[0][0]);
+    gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &app.transform[0][0]);
     gl.Uniform1i(gl.GetUniformLocation(shader_program, "maxiter"), 1000);
     gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
 
@@ -78,28 +88,30 @@ main :: proc() {
 }
 
 cb_frame_buffer_size :: proc "c" (window: glfw.WindowHandle, width, height: i32) {
+  app := cast(^Application) glfw.GetWindowUserPointer(window)
   w, h := glfw.GetFramebufferSize(window)
   gl.Viewport(0, 0, w, h)
   context = runtime.default_context()
-  transform = matrix4_transform_mandelbrot_space(xcenter, ycenter, zoom, w, h)
+  app.transform = matrix4_transform_mandelbrot_space(app.xcenter, app.ycenter, app.zoom, w, h)
 }
 
 cb_key :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32) {
+  app := cast(^Application) glfw.GetWindowUserPointer(window)
   if key == glfw.KEY_ESCAPE do glfw.SetWindowShouldClose(window, true)
 }
 
-handle_inputs :: proc(window: glfw.WindowHandle) {
-  offset := 0.005 * zoom
-  if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS do ycenter += offset
-  if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS do ycenter -= offset
-  if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS do xcenter -= offset
-  if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS do xcenter += offset
-  if glfw.GetKey(window, glfw.KEY_Q) == glfw.PRESS do zoom *= 1.02
-  if glfw.GetKey(window, glfw.KEY_E) == glfw.PRESS do zoom *= 0.98
+handle_inputs :: proc(window: glfw.WindowHandle, app: ^Application) {
+  offset := 0.005 * app.zoom
+  if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS do app.ycenter += offset
+  if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS do app.ycenter -= offset
+  if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS do app.xcenter -= offset
+  if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS do app.xcenter += offset
+  if glfw.GetKey(window, glfw.KEY_Q) == glfw.PRESS do app.zoom *= 1.02
+  if glfw.GetKey(window, glfw.KEY_E) == glfw.PRESS do app.zoom *= 0.98
 
   context = runtime.default_context()
   w, h := glfw.GetFramebufferSize(window)
-  transform = matrix4_transform_mandelbrot_space(xcenter, ycenter, zoom, w, h)
+  app.transform = matrix4_transform_mandelbrot_space(app.xcenter, app.ycenter, app.zoom, w, h)
 }
 
 matrix4_transform_mandelbrot_space :: proc(xcenter, ycenter, zoom: f32, w, h: i32) -> linalg.Matrix4f32 {
