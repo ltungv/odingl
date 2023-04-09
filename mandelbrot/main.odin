@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:image/png"
 import "core:math/linalg"
 import "core:runtime"
 import gl "vendor:OpenGL"
@@ -38,7 +39,12 @@ main :: proc() {
   glfw.SetFramebufferSizeCallback(window, cb_frame_buffer_size)
   glfw.MakeContextCurrent(window)
   glfw.SwapInterval(1)
+
   commons.gl_load()
+
+  texture: u32
+  gl.GenTextures(1, &texture)
+  load_texture(texture, "mandelbrot/palette.png")
 
   shader_program: u32
   if shader_program, is_ok = commons.gl_load_source(#load("vert.glsl"), #load("frag.glsl")); !is_ok do return
@@ -69,6 +75,10 @@ main :: proc() {
     glfw.PollEvents()
     handle_inputs(window, &app)
 
+    // Color texture
+    gl.ActiveTexture(gl.TEXTURE0)
+    gl.BindTexture(gl.TEXTURE_1D, texture)
+
     // Bind opengl objects
     gl.BindVertexArray(vao)
     gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
@@ -80,7 +90,8 @@ main :: proc() {
 
     gl.UseProgram(shader_program)
     gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &app.transform[0][0]);
-    gl.Uniform1i(gl.GetUniformLocation(shader_program, "maxiter"), 1000);
+    gl.Uniform1i(gl.GetUniformLocation(shader_program, "maxiter"), 10000);
+    gl.Uniform1i(gl.GetUniformLocation(shader_program, "palette"), 0);
     gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
 
     glfw.SwapBuffers(window)
@@ -136,4 +147,34 @@ quad :: proc() -> ([12]f32, [6]u32) {
       1, 2, 3,
   }
   return vertices, indices
+}
+
+load_texture :: proc(texture_id: u32, path: string) {
+  container_texture, container_texture_error := png.load_from_file(path)
+  if container_texture_error != nil {
+    fmt.println("Could not load texture image.")
+    fmt.printf("Error: %s.\n", container_texture_error)
+    return
+  }
+  defer png.destroy(container_texture)
+
+  fmt.println(path)
+  fmt.printf(
+    "-- W: %d H: %d (%d pixels)\n",
+    container_texture.width,
+    container_texture.height,
+    len(container_texture.pixels.buf))
+
+  gl.BindTexture(gl.TEXTURE_1D, texture_id)
+  gl.TexImage1D(
+    gl.TEXTURE_1D,
+    0,
+    gl.RGB,
+    i32(container_texture.width),
+    0,
+    gl.RGB,
+    gl.UNSIGNED_BYTE,
+    raw_data(container_texture.pixels.buf))
+  gl.TexParameteri(gl.TEXTURE_1D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.TexParameteri(gl.TEXTURE_1D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 }
