@@ -9,6 +9,7 @@ import "vendor:glfw"
 import "../commons"
 
 Application :: struct {
+  maxiter: i32,
   zoom: f32,
   xcenter: f32,
   ycenter: f32,
@@ -28,18 +29,17 @@ main :: proc() {
   defer glfw.DestroyWindow(window)
 
   app := Application {
+    maxiter = 10000,
     zoom = f32(1.0),
     xcenter = f32(0.0),
     ycenter = f32(0.0),
     transform = linalg.MATRIX4F32_IDENTITY,
   }
+  app_view_update(&app, window)
 
   glfw.SetWindowUserPointer(window, &app)
-  glfw.SetKeyCallback(window, cb_key)
   glfw.SetFramebufferSizeCallback(window, cb_frame_buffer_size)
   glfw.MakeContextCurrent(window)
-  glfw.SwapInterval(1)
-
   commons.gl_load()
 
   texture: u32
@@ -49,6 +49,7 @@ main :: proc() {
   shader_program: u32
   if shader_program, is_ok = commons.gl_load_source(#load("vert.glsl"), #load("frag.glsl")); !is_ok do return
 
+  quad_vertices, quad_indices := quad()
   vao, vbo, ebo: u32
   gl.GenVertexArrays(1, &vao)
   defer gl.DeleteVertexArrays(1, &vao)
@@ -57,7 +58,6 @@ main :: proc() {
   gl.GenBuffers(1, &ebo)
   defer gl.DeleteBuffers(1, &ebo)
 
-  quad_vertices, quad_indices := quad()
   gl.BindVertexArray(vao)
   // Load the vertices data
   gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
@@ -71,26 +71,23 @@ main :: proc() {
   gl.EnableVertexAttribArray(0);
 
   for !glfw.WindowShouldClose(window) {
-    // Accepting keyboard inputs for movement and zoom.
     glfw.PollEvents()
-    handle_inputs(window, &app)
+    handle_inputs(window)
+
+    gl.ClearColor(0.0, 0.0, 0.0, 1.0)
+    gl.Clear(gl.COLOR_BUFFER_BIT)
 
     // Color texture
     gl.ActiveTexture(gl.TEXTURE0)
     gl.BindTexture(gl.TEXTURE_1D, texture)
-
-    // Bind opengl objects
+    // Bind vertices buffers
     gl.BindVertexArray(vao)
     gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
     gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
-
-    // Render
-    gl.ClearColor(0.0, 0.0, 0.0, 1.0)
-    gl.Clear(gl.COLOR_BUFFER_BIT)
-
+    // Draw shaders
     gl.UseProgram(shader_program)
     gl.UniformMatrix4fv(gl.GetUniformLocation(shader_program, "transform"), 1, gl.FALSE, &app.transform[0][0]);
-    gl.Uniform1i(gl.GetUniformLocation(shader_program, "maxiter"), 10000);
+    gl.Uniform1i(gl.GetUniformLocation(shader_program, "maxiter"), app.maxiter);
     gl.Uniform1i(gl.GetUniformLocation(shader_program, "palette"), 0);
     gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, rawptr(uintptr(0)))
 
@@ -99,54 +96,48 @@ main :: proc() {
 }
 
 cb_frame_buffer_size :: proc "c" (window: glfw.WindowHandle, width, height: i32) {
+  context = runtime.default_context()
   app := cast(^Application) glfw.GetWindowUserPointer(window)
   w, h := glfw.GetFramebufferSize(window)
+
   gl.Viewport(0, 0, w, h)
+  app_view_update(app, window)
+}
+
+handle_inputs :: proc(window: glfw.WindowHandle) {
   context = runtime.default_context()
-  app.transform = matrix4_transform_mandelbrot_space(app.xcenter, app.ycenter, app.zoom, w, h)
-}
-
-cb_key :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32) {
   app := cast(^Application) glfw.GetWindowUserPointer(window)
-  if key == glfw.KEY_ESCAPE do glfw.SetWindowShouldClose(window, true)
-}
 
-handle_inputs :: proc(window: glfw.WindowHandle, app: ^Application) {
   offset := 0.005 * app.zoom
+  cached_zoom := app.zoom
+  cached_xcenter := app.xcenter
+  cached_ycenter := app.ycenter
+  cached_maxiter := app.maxiter
+
   if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS do app.ycenter += offset
   if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS do app.ycenter -= offset
   if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS do app.xcenter -= offset
   if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS do app.xcenter += offset
-  if glfw.GetKey(window, glfw.KEY_Q) == glfw.PRESS do app.zoom *= 1.02
-  if glfw.GetKey(window, glfw.KEY_E) == glfw.PRESS do app.zoom *= 0.98
+  if glfw.GetKey(window, glfw.KEY_UP) == glfw.PRESS do app.zoom *= 0.98
+  if glfw.GetKey(window, glfw.KEY_DOWN) == glfw.PRESS do app.zoom *= 1.02
+  if glfw.GetKey(window, glfw.KEY_LEFT) == glfw.PRESS do app.maxiter -= 500
+  if glfw.GetKey(window, glfw.KEY_RIGHT) == glfw.PRESS do app.maxiter += 500
+  if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS do glfw.SetWindowShouldClose(window, true)
 
-  context = runtime.default_context()
-  w, h := glfw.GetFramebufferSize(window)
-  app.transform = matrix4_transform_mandelbrot_space(app.xcenter, app.ycenter, app.zoom, w, h)
+  is_view_changed := cached_zoom != app.zoom || cached_xcenter != app.xcenter || cached_ycenter != app.ycenter
+  if is_view_changed do app_view_update(app, window)
+  if cached_maxiter != app.maxiter do fmt.printf("Maxiter: %d\n", app.maxiter)
 }
 
-matrix4_transform_mandelbrot_space :: proc(xcenter, ycenter, zoom: f32, w, h: i32) -> linalg.Matrix4f32 {
+app_view_update :: proc(app: ^Application, window: glfw.WindowHandle) {
+  w, h := glfw.GetFramebufferSize(window)
   transform := linalg.MATRIX4F32_IDENTITY
   transform = transform * linalg.matrix4_scale(linalg.Vector3f32{4.5, 4.5, 1.0})
-  transform = transform * linalg.matrix4_translate(linalg.Vector3f32{xcenter, ycenter, 1.0})
-  transform = transform * linalg.matrix4_scale(linalg.Vector3f32{zoom, zoom, 1.0})
-  transform = transform * linalg.matrix4_translate(linalg.Vector3f32{-0.5, -0.5, 1.0})
+  transform = transform * linalg.matrix4_translate(linalg.Vector3f32{app.xcenter, app.ycenter, 1.0})
+  transform = transform * linalg.matrix4_scale(linalg.Vector3f32{app.zoom, app.zoom, 1.0})
+  transform = transform * linalg.matrix4_translate(linalg.Vector3f32{-0.6, -0.5, 1.0})
   transform = transform * linalg.matrix4_scale(linalg.Vector3f32{1.0 / f32(w), 1.0 / f32(h), 1.0})
-  return transform
-}
-
-quad :: proc() -> ([12]f32, [6]u32) {
-  vertices := [?]f32 {
-     1.0,  1.0, 0.0,
-     1.0, -1.0, 0.0,
-    -1.0, -1.0, 0.0,
-    -1.0,  1.0, 0.0
-  }
-  indices := [?]u32 {
-      0, 1, 3,
-      1, 2, 3,
-  }
-  return vertices, indices
+  app.transform = transform
 }
 
 load_texture :: proc(texture_id: u32, path: string) {
@@ -177,4 +168,18 @@ load_texture :: proc(texture_id: u32, path: string) {
     raw_data(container_texture.pixels.buf))
   gl.TexParameteri(gl.TEXTURE_1D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.TexParameteri(gl.TEXTURE_1D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+}
+
+quad :: proc() -> ([12]f32, [6]u32) {
+  vertices := [?]f32 {
+     1.0,  1.0, 0.0,
+     1.0, -1.0, 0.0,
+    -1.0, -1.0, 0.0,
+    -1.0,  1.0, 0.0
+  }
+  indices := [?]u32 {
+      0, 1, 3,
+      1, 2, 3,
+  }
+  return vertices, indices
 }
